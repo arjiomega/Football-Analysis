@@ -5,7 +5,7 @@
 - [x] predict using yolov9
 - [x] finetune using custom dataset (only detect players, ball, goalkeeper, and referees)
 - [x] annotate video for player, referee, and ball identification
-- [ ] assign shirt color to a team
+- [x] assign shirt color to a team and update player circle's color
 
 ## Data
 Sources: 

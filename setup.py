@@ -10,6 +10,7 @@ setup(
         "roboflow==1.1.30",
         "supervision==0.20.0",
         "opencv-python==4.9.0.80",
+        "scikit-learn==1.5.0",
     ],
     extras_require={
         "dev": [
