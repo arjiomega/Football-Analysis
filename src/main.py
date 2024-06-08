@@ -3,11 +3,13 @@ from pathlib import Path
 from datetime import datetime
 
 import cv2
+import numpy as np
 
 from config import config
 from src.trackers import Tracker
 from src.utils import save_video, read_video
 from src.team_classifier import TeamClassifier
+from src.player_ball_assigner import PlayerBallAssigner
 
 
 # Configure logging
@@ -34,6 +36,9 @@ def main(model_name: str = "best.pt", video_path: str = config.SAMPLE_VID):
         stub_path=Path(config.STUB_DIR, "track_stubs.pkl"),
     )
 
+    # Interpolate ball positions
+    tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])
+
     # Assign Player Teams
     team_classifier = TeamClassifier()
     team_classifier.assign_team_color(video_frames[0], tracks["players"][0])
@@ -48,9 +53,30 @@ def main(model_name: str = "best.pt", video_path: str = config.SAMPLE_VID):
                 team_classifier.team_colors[team]
             )
 
+    # Assign Ball Acquisition
+    player_assigner = PlayerBallAssigner()
+    team_ball_control = []
+    for frame_num, player_track in enumerate(tracks["players"]):
+        ball_bounding_box = tracks["ball"][frame_num][1]["bounding_box"]
+        assigned_player = player_assigner.assign_ball_to_player(
+            player_track, ball_bounding_box
+        )
+
+        if assigned_player != -1:
+            tracks["players"][frame_num][assigned_player]["has_ball"] = True
+            team_ball_control.append(
+                tracks["players"][frame_num][assigned_player]["team"]
+            )
+        else:
+            team_ball_control.append(team_ball_control[-1])
+
+    team_ball_control = np.array(team_ball_control)
+
     # Draw output
     ## Draw object tracks
-    output_video_frames = tracker.draw_annotations(video_frames, tracks)
+    output_video_frames = tracker.draw_annotations(
+        video_frames, tracks, team_ball_control
+    )
 
     # Save Video
     video_name = "output"

@@ -4,6 +4,7 @@ import logging
 
 import cv2
 import numpy as np
+import pandas as pd
 import supervision as sv
 from ultralytics import YOLO
 
@@ -15,6 +16,22 @@ class Tracker:
         logging.info("Initializing Tracker with model path: %s", model_path)
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
+
+    def interpolate_ball_positions(self, ball_positions):
+        ball_positions = [x.get(1, {}).get("bounding_box", []) for x in ball_positions]
+        df_ball_positions = pd.DataFrame(
+            ball_positions, columns=["x1", "y1", "x2", "y2"]
+        )
+
+        # Interpolate missing values
+        df_ball_positions.interpolate(inplace=True)
+        df_ball_positions.bfill(inplace=True)
+
+        ball_positions = [
+            {1: {"bounding_box": x}} for x in df_ball_positions.to_numpy().tolist()
+        ]
+
+        return ball_positions
 
     def detect_frames(self, frames):
         BATCH_SIZE = 20
@@ -177,7 +194,54 @@ class Tracker:
 
         return frame
 
-    def draw_annotations(self, video_frames, tracks):
+    def draw_team_ball_control(self, frame, frame_num, team_ball_control):
+        # Draw a semi-transparent rectangle
+        overlay = frame.copy()
+        cv2.rectangle(
+            overlay,
+            (1350, 850),
+            (1900, 970),
+            (255, 255, 255),
+            -1,
+        )
+        alpha = 0.4  # for transparency
+        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+
+        team_ball_control_till_frame = team_ball_control[: frame_num + 1]
+
+        # Get the number of times each team had the ball
+        team_1_num_frames = team_ball_control_till_frame[
+            team_ball_control_till_frame == 1
+        ].shape[0]
+        team_2_num_frames = team_ball_control_till_frame[
+            team_ball_control_till_frame == 2
+        ].shape[0]
+
+        team_1 = team_1_num_frames / (team_1_num_frames + team_2_num_frames)
+        team_2 = team_2_num_frames / (team_1_num_frames + team_2_num_frames)
+
+        cv2.putText(
+            frame,
+            f"Team 1 Ball Control: {team_1*100:.2f}%",
+            (1400, 900),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 0, 0),
+            3,
+        )
+        cv2.putText(
+            frame,
+            f"Team 2 Ball Control: {team_2*100:.2f}%",
+            (1400, 950),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 0, 0),
+            3,
+        )
+
+        return frame
+
+    def draw_annotations(self, video_frames, tracks, team_ball_control):
         output_video_frames = []
 
         for (
@@ -199,18 +263,25 @@ class Tracker:
                     frame, player["bounding_box"], team_color, track_id
                 )
 
+                if player.get("has_ball", False):
+                    frame = self.draw_triangle(frame, player["bounding_box"], RED)
+
             # Draw referees
             YELLOW = (0, 255, 255)
 
             for track_id, referee in referee_dict.items():
                 frame = self.draw_ellipse(frame, referee["bounding_box"], YELLOW)
 
-            output_video_frames.append(frame)
-
             # Draw ball
             GREEN = (0, 255, 0)
 
             for track_id, ball in ball_dict.items():
                 frame = self.draw_triangle(frame, ball["bounding_box"], GREEN)
+
+            # Draw Team Ball Control
+
+            frame = self.draw_team_ball_control(frame, frame_num, team_ball_control)
+
+            output_video_frames.append(frame)
 
         return output_video_frames
