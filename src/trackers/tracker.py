@@ -8,7 +8,11 @@ import pandas as pd
 import supervision as sv
 from ultralytics import YOLO
 
-from src.utils import get_bounding_box_width, get_center_of_bounding_box
+from src.utils import (
+    get_bounding_box_width,
+    get_center_of_bounding_box,
+    get_foot_position,
+)
 
 
 class Tracker:
@@ -16,6 +20,18 @@ class Tracker:
         logging.info("Initializing Tracker with model path: %s", model_path)
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
+
+    def add_position_to_tracks(self, tracks):
+        for object, object_tracks in tracks.items():
+            for frame_num, track in enumerate(object_tracks):
+                for track_id, track_info in track.items():
+                    bounding_box = track_info["bounding_box"]
+                    if object == "ball":
+                        position = get_center_of_bounding_box(bounding_box)
+                    else:
+                        position = get_foot_position(bounding_box)
+
+                    tracks[object][frame_num][track_id]["position"] = position
 
     def interpolate_ball_positions(self, ball_positions):
         ball_positions = [x.get(1, {}).get("bounding_box", []) for x in ball_positions]

@@ -9,7 +9,9 @@ from config import config
 from src.trackers import Tracker
 from src.utils import save_video, read_video
 from src.team_classifier import TeamClassifier
+from src.view_transformer import ViewTransformer
 from src.player_ball_assigner import PlayerBallAssigner
+from src.camera_movement_estimator import CameraMovementEstimator
 
 
 # Configure logging
@@ -35,6 +37,26 @@ def main(model_name: str = "best.pt", video_path: str = config.SAMPLE_VID):
         read_from_stub=True,
         stub_path=Path(config.STUB_DIR, "track_stubs.pkl"),
     )
+
+    # Get object positions
+    tracker.add_position_to_tracks(tracks)
+
+    # Camera Movement Estimator
+    camera_movement_estimator = CameraMovementEstimator(video_frames[0])
+    camera_movement_per_frame = camera_movement_estimator.get_camera_movement(
+        video_frames,
+        read_from_stub=True,
+        stub_path=Path(config.STUB_DIR, "camera_movement_stubs.pkl"),
+    )
+
+    #
+    camera_movement_estimator.add_adjust_positions_to_tracks(
+        tracks, camera_movement_per_frame
+    )
+
+    # View Transformer
+    view_transformer = ViewTransformer()
+    view_transformer.add_transformed_position_to_tracks(tracks)
 
     # Interpolate ball positions
     tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])
@@ -76,6 +98,11 @@ def main(model_name: str = "best.pt", video_path: str = config.SAMPLE_VID):
     ## Draw object tracks
     output_video_frames = tracker.draw_annotations(
         video_frames, tracks, team_ball_control
+    )
+
+    ## Draw camera movement
+    output_video_frames = camera_movement_estimator.draw_camera_movement(
+        output_video_frames, camera_movement_per_frame
     )
 
     # Save Video
